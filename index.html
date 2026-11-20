@@ -525,6 +525,22 @@ dialog{border-radius:var(--r-l) var(--r-l) 0 0}
 .ttempty{display:grid;gap:10px;padding:14px;border:2px dashed var(--line);border-radius:var(--r-m)}
 .ttempty .add{min-height:56px}
 
+/* 土日祝の色 */
+:root{--c-sat:#2160C4;--c-sun:#C8322B;--bg-sat:#EEF4FF;--bg-sun:#FFF0EF}
+.wd.sat small,.wd.sat b,.day.sat small,.day.sat b,h1.sat,p.sat{color:var(--c-sat)}
+.wd.sun small,.wd.sun b,.day.sun small,.day.sun b,h1.sun,p.sun{color:var(--c-sun)}
+.wrow.sat{background:var(--bg-sat)}
+.wrow.sun{background:var(--bg-sun)}
+.wrow.now{background:var(--soft)}
+.day[aria-current="date"].sat small,.day[aria-current="date"].sat b{color:var(--c-sat)}
+.day[aria-current="date"].sun small,.day[aria-current="date"].sun b{color:var(--c-sun)}
+.hname{display:block;margin-top:2px;font-family:var(--ui);font-size:11px;font-weight:900;line-height:1.2;color:var(--c-sun);text-align:center;overflow-wrap:anywhere;padding:0 2px}
+.tg .th.hol{color:var(--c-sun);background:var(--bg-sun)}
+.thhol{display:block;margin-top:2px;font-size:11px;font-weight:900;line-height:1.2;color:var(--c-sun);overflow-wrap:anywhere}
+.tg .tc.holday{background:repeating-linear-gradient(135deg,#F4F4F4 0 6px,#FFFFFF 6px 12px);color:#9AA0A6;border-bottom-color:#D9DDE1;font-weight:500}
+.tg .tc.holday.test{background:#E7B9B6;color:#fff}
+@media (min-width:700px){.hname,.thhol{font-size:14px}}
+
 /* タブレット: 画面の幅に合わせて自動で広げる */
 @media (min-width:700px){
   body{font-size:19px}
@@ -742,6 +758,25 @@ function notes(){
 }
 
 /* どの画面でも「今日は何日」を出す */
+/* 日本の祝日(振替休日・国民の休日を含む)を、ネットなしで計算する */
+const HOL={};
+function holidaysOf(y){
+  if(HOL[y])return HOL[y];
+  const H={},p=n=>String(n).padStart(2,"0"),k=(m,d)=>`${y}-${p(m)}-${p(d)}`;
+  const nth=(m,n)=>{const w=new Date(y,m-1,1).getDay();return 1+((8-w)%7)+(n-1)*7};/* 第n月曜 */
+  const a=y-1980,spring=Math.floor(20.8431+0.242194*a-Math.floor(a/4)),autumn=Math.floor(23.2488+0.242194*a-Math.floor(a/4));
+  [[1,1,"元日"],[1,nth(1,2),"成人の日"],[2,11,"建国記念の日"],[2,23,"天皇誕生日"],[3,spring,"春分の日"],[4,29,"昭和の日"],
+   [5,3,"憲法記念日"],[5,4,"みどりの日"],[5,5,"こどもの日"],[7,nth(7,3),"海の日"],[8,11,"山の日"],[9,nth(9,3),"敬老の日"],
+   [9,autumn,"秋分の日"],[10,nth(10,2),"スポーツの日"],[11,3,"文化の日"],[11,23,"勤労感謝の日"]].forEach(([m,d,n])=>{H[k(m,d)]=n});
+  /* 国民の休日: 祝日にはさまれた平日 */
+  Object.keys(H).forEach(d=>{const n=shift(d,1),n2=shift(d,2);if(!H[n]&&H[n2]&&parse(n).getDay()!==0)H[n]="国民の休日"});
+  /* 振替休日: 日曜の祝日のあと、最初の祝日でない日 */
+  Object.keys(H).sort().forEach(d=>{if(parse(d).getDay()===0){let n=shift(d,1);while(H[n])n=shift(n,1);H[n]="振替休日"}});
+  return HOL[y]=H;
+}
+const holiday=k=>holidaysOf(+k.slice(0,4))[k]||"";
+/* 色分け用: 土曜は sat、日曜と祝日は sun */
+const dayKind=k=>holiday(k)||parse(k).getDay()===0?"sun":parse(k).getDay()===6?"sat":"";
 const todayLine=()=>{const d=new Date();return `<span class="today-chip">今日は ${d.getMonth()+1}月${d.getDate()}日(${WD[d.getDay()]})</span>`};
 function render(){
   document.documentElement.dataset.who=who;
@@ -768,8 +803,8 @@ function renderWeek(){
   const item=x=>{const S=SUBJECTS[x.subj];return `<button class="it" style="--c:var(${S.c})" data-act="open" data-v="${x.id}" aria-label="${S.n} ${esc(x.title)} ${x.note?esc(x.note)+" ":""}${fun(x.done?x.min:x.plan)}${x.done?"やった":""}"><strong>${esc(x.title)}</strong>${x.done?hana("",5):""}${x.note?`<em class="nt">${esc(x.note)}</em>`:""}<em>${S.n} ${fun(x.done?x.min:x.plan)}</em></button>`};
   const rows=D.map(k=>{
     const d=parse(k),l=on(k);
-    return `<div class="wrow${k===t?" now":""}">
-      <div class="wdc"><button class="wd" data-act="jump" data-v="${k}" aria-label="${d.getMonth()+1}月${d.getDate()}日 ${WDL[d.getDay()]}${testsOn(k).map(x=>" "+esc(testName(x))).join("")}を開く"><small>${WD[d.getDay()]}</small><b>${d.getDate()}</b>${k===t?"<i>今日</i>":""}${testsOn(k).map(x=>`<span class="wdt">${esc(x.subj)}<br>テスト</span>`).join("")}</button></div>
+    return `<div class="wrow${k===t?" now":""} ${dayKind(k)}">
+      <div class="wdc"><button class="wd ${dayKind(k)}" data-act="jump" data-v="${k}" aria-label="${d.getMonth()+1}月${d.getDate()}日 ${WDL[d.getDay()]}${holiday(k)?" "+holiday(k):""}${testsOn(k).map(x=>" "+esc(testName(x))).join("")}を開く"><small>${WD[d.getDay()]}</small><b>${d.getDate()}</b>${holiday(k)?`<span class="hname">${holiday(k)}</span>`:""}${k===t?"<i>今日</i>":""}${testsOn(k).map(x=>`<span class="wdt">${esc(x.subj)}<br>テスト</span>`).join("")}</button></div>
       <div class="wc">${l.filter(x=>!x.done).map(item).join("")}<button class="plus" data-act="new" data-v="${k}" aria-label="${d.getDate()}日に計画を足す">+ 足す</button></div>
       <div class="wc">${l.filter(x=>x.done).map(item).join("")}</div></div>`;
   }).join("");
@@ -785,13 +820,13 @@ function renderDay(){
   for(let i=0;i<7;i++){
     const c=shift(ui.week,i),x=parse(c),st=status(c);
     const m=st==="all"?hana("",5):st==="none"?"":'<span class="dot"></span>';
-    const lab=`${x.getMonth()+1}月${x.getDate()}日 ${WDL[x.getDay()]}${st==="all"?" 花丸":""}`;
-    days+=`<button class="day${c===t?" is-today":""}" data-act="day" data-v="${c}" aria-label="${lab}" ${c===k?'aria-current="date"':""}><small>${WD[x.getDay()]}</small><b>${x.getDate()}</b><span class="mark" style="width:22px">${m}</span></button>`;
+    const lab=`${x.getMonth()+1}月${x.getDate()}日 ${WDL[x.getDay()]}${holiday(c)?" "+holiday(c):""}${st==="all"?" 花丸":""}`;
+    days+=`<button class="day${c===t?" is-today":""} ${dayKind(c)}" data-act="day" data-v="${c}" aria-label="${lab}" ${c===k?'aria-current="date"':""}><small>${WD[x.getDay()]}</small><b>${x.getDate()}</b><span class="mark" style="width:22px">${m}</span></button>`;
   }
   const say=!L.length?(k<t?"この日の計画はなし":"計画を立てよう"):n===L.length?"全部できたね!":`やること${L.length-n}つ ・ やったこと${n}つ`;
   $("board").innerHTML=`
     <div class="board-top">
-      <div class="board-title">${k===t?"":todayLine()}<h1>${d.getMonth()+1}月 ${d.getDate()}日</h1><p>${WDL[d.getDay()]}${k===t?"(今日)":k===shift(t,1)?"(明日)":k===shift(t,-1)?"(昨日)":""}</p></div>
+      <div class="board-title">${k===t?"":todayLine()}<h1 class="${dayKind(k)}">${d.getMonth()+1}月 ${d.getDate()}日</h1><p class="${dayKind(k)}">${WDL[d.getDay()]}${holiday(k)?" ・ "+holiday(k):""}${k===t?"(今日)":k===shift(t,1)?"(明日)":k===shift(t,-1)?"(昨日)":""}</p></div>
       <button class="nav-btn" data-act="week" data-v="-7" aria-label="前の週">${ICON.l}</button>
       <button class="nav-btn" data-act="week" data-v="7" aria-label="次の週">${ICON.r}</button>
     </div>
@@ -850,11 +885,13 @@ function ttGrid(g,edit,T={},dates=false,tap=false){
   let h='<div></div>'+TT_DAYS.map((d,i)=>{const k=D[i],x=parse(k);
     /* 時間割にない教科のテストは、曜日の下に出す */
     const extra=dates?testsOn(k).filter(y=>!g[i].includes(y.subj)).map(y=>`<span class="thx">${esc(y.subj)}テスト</span>`).join(""):"";
-    return `<div class="th${dates&&k===t?" now":""}${extra?" has-x":""}">${d}${dates?`<small>${x.getMonth()+1}/${x.getDate()}</small>`:""}${dates&&k===t?'<span class="thtoday">今日</span>':""}${extra}</div>`}).join("");
+    const hn=dates?holiday(k):"";
+    return `<div class="th${dates&&k===t?" now":""}${extra?" has-x":""}${hn?" hol":""}">${d}${dates?`<small>${x.getMonth()+1}/${x.getDate()}</small>`:""}${dates&&k===t?'<span class="thtoday">今日</span>':""}${hn?`<span class="thhol">${hn}</span>`:""}${extra}</div>`}).join("");
+  const holCols=TT_DAYS.map((_,i)=>dates&&!edit?holiday(D[i]):"");
   for(let p=0;p<TT_PERIODS;p++){
     h+=`<div class="pn">${p+1}</div>`;
     for(let d=0;d<5;d++){
-      const l=g[d][p],k=d+"-"+p,test=!!(l&&T[k]),st=l?`style="--c:var(${ttC(l)})"`:"",cls=`tc${l?"":" off"}${test?" test":""}`,name=`${TT_DAYS[d]}曜${p+1}時間目 ${l||"空き"}${test?" テスト":""}`;
+      const l=g[d][p],k=d+"-"+p,test=!!(l&&T[k]),st=l?`style="--c:var(${ttC(l)})"`:"",cls=`tc${l?"":" off"}${test?" test":""}${holCols[d]?" holday":""}`,name=`${TT_DAYS[d]}曜${p+1}時間目 ${holCols[d]?"お休み("+holCols[d]+")":(l||"空き")}${test?" テスト":""}`;
       h+=edit?`<button type="button" class="${cls}" ${st} data-act="ttCell" data-v="${k}" aria-pressed="${s.sel===k}" aria-label="${name}">${cellHTML(l,test)}</button>`
         :tap?`<button type="button" class="${cls}" ${st} data-act="ttQuick" data-v="${k}" aria-label="${name}を直す">${cellHTML(l,test)}</button>`
         :`<div class="${cls}" ${st}>${cellHTML(l,test)}</div>`;
@@ -877,7 +914,7 @@ function renderTT(){
     <section class="panel tt-now"><h2>週の時間割</h2>
       <div class="ttnav"><button class="nav-btn" data-act="ttWeek" data-v="-7" aria-label="前の週">${ICON.l}</button><b>${weekLabel(W)}<span>${relWeek(W)}</span></b><button class="nav-btn" data-act="ttWeek" data-v="7" aria-label="次の週">${ICON.r}</button></div>
       ${W!==ttDefaultWeek()?'<button class="small" data-act="ttWeekReset">今の週にもどる</button>':""}
-      ${A?`<p>マスを押すと、すぐ直せるよ。赤いマスがテストの時間だよ。</p>`+ttGrid(A.grid,false,weekTestCells(A.grid,W),W,true)+`<div class="row-btns"><button class="small" data-act="ttEdit" data-v="${A.id}">写真を見ながら直す</button></div>`
+      ${A?`<p>マスを押すと、すぐ直せるよ。赤いマスがテストの時間だよ。${viewDays(W).some(holiday)?"しま模様の日は祝日でお休みだよ。":""}</p>`+ttGrid(A.grid,false,weekTestCells(A.grid,W),W,true)+`<div class="row-btns"><button class="small" data-act="ttEdit" data-v="${A.id}">写真を見ながら直す</button></div>`
       :`<div class="ttempty"><p>${weekLabel(W)}の週の時間割は、まだ登録されていないよ。</p>
         ${P?`<button class="add" data-act="ttCopyPrev"><span aria-hidden="true">+</span>${weekLabel(P.week)}の時間割をコピーして作る</button>`:""}
         <button class="ghost" data-act="ttNew">写真から登録する</button>
@@ -1040,7 +1077,7 @@ function sheetExtra(){
       `<div class="sub"><button class="link" data-act="ttEdit" data-v="${x.id}">${weekLabel(ui.ttWeek)}にコピー</button><button class="link${s.del?" warn":""}" data-act="ttDel">${s.del?"本当に消す":"この時間割を消す"}</button></div>`;
   }
   if(s.mode==="ttPlan"){
-    const A=ttOf(s.week),t=today(),W=weekDays(s.week),days=A?W.slice(0,5).filter(k=>k>=t):[];
+    const A=ttOf(s.week),t=today(),W=weekDays(s.week),days=A?W.slice(0,5).filter(k=>k>=t&&!holiday(k)):[];
     const Ts=planTests(s.week),n=Object.values(s.pick).reduce((a,v)=>a+v.length,0)+s.pickT.length;
     const testsH=Ts.length?`<div class="pl"><b>テスト勉強(テストの前の日に入るよ)</b><div class="opts">${Ts.map(x=>`<button class="opt mini" type="button" style="--c:#C9261D" data-act="ttChipT" data-v="${x.id}" aria-pressed="${s.pickT.includes(x.id)}">${dateLabel(x.date)} ${x.subj}</button>`).join("")}</div></div>`:"";
     const daysH=days.map(k=>{const d=parse(k),L=[...new Set(A.grid[dayIdx(k)].filter(Boolean))];
@@ -1277,7 +1314,7 @@ const ACT={
   ttSheetWeek:v=>{s.week=shift(s.week,+v);s.tests={};s.testsInit={};renderSheet()},
   ttCopyPrev:()=>{const P=ttBefore(ui.ttWeek);if(!P)return;tts().push({id:uid(),week:ui.ttWeek,savedAt:Date.now(),grid:P.grid.map(r=>r.slice()),photoId:P.photoId});save();render()},
   ttPlan:v=>{const w=v==="tt"?ui.ttWeek:ui.week,A=ttOf(w),Ts=planTests(w);if(!A&&!Ts.length){ui.ttWeek=w;ACT.tab("tt");return}
-    const pick={};if(A)weekDays(w).slice(0,5).filter(k=>k>=today()).forEach(k=>{pick[k]=[...new Set(A.grid[dayIdx(k)].filter(l=>l&&subjOf(l)))]});
+    const pick={};if(A)weekDays(w).slice(0,5).filter(k=>k>=today()&&!holiday(k)).forEach(k=>{pick[k]=[...new Set(A.grid[dayIdx(k)].filter(l=>l&&subjOf(l)))]});
     openSheet({mode:"ttPlan",week:w,pick,pickT:Ts.map(x=>x.id),plan:15})},
   ttChip:v=>{const[k,l]=v.split("|"),a=s.pick[k];s.pick[k]=a.includes(l)?a.filter(x=>x!==l):[...a,l];renderSheet()},
   ttChipT:v=>{s.pickT=s.pickT.includes(v)?s.pickT.filter(x=>x!==v):[...s.pickT,v];renderSheet()},
