@@ -518,6 +518,10 @@ dialog{border-radius:var(--r-l) var(--r-l) 0 0}
 .tg .th.has-x{align-content:start;padding-top:4px}
 .thx{display:block;margin-top:3px;background:#C9261D;color:#fff;border-radius:5px;font-size:11px;font-weight:900;line-height:1.2;padding:1px 3px;max-width:100%;overflow-wrap:anywhere}
 
+.today-chip{display:inline-block;margin-bottom:4px;padding:3px 12px;border-radius:var(--r-p);background:var(--paper);color:var(--ink);font-size:17px;font-weight:900;line-height:1.4}
+.thtoday{display:block;margin-top:2px;font-size:12px;font-weight:900;background:var(--paper);color:var(--ink);border-radius:5px;padding:0 4px}
+.tg .th.now{box-shadow:inset 0 0 0 3px var(--ink)}
+
 /* タブレット: 画面の幅に合わせて自動で広げる */
 @media (min-width:700px){
   body{font-size:19px}
@@ -733,6 +737,8 @@ function notes(){
   return h;
 }
 
+/* どの画面でも「今日は何日」を出す */
+const todayLine=()=>{const d=new Date();return `<span class="today-chip">今日は ${d.getMonth()+1}月${d.getDate()}日(${WD[d.getDay()]})</span>`};
 function render(){
   document.documentElement.dataset.who=who;
   $("who").innerHTML=Object.entries(USERS).map(([k,n])=>`<button data-act="who" data-v="${k}" aria-pressed="${k===who}">${n}</button>`).join("");
@@ -749,7 +755,7 @@ function renderWeek(){
   const rel=ui.week===cur?"今週":ui.week===shift(cur,7)?"来週":ui.week===shift(cur,-7)?"先週":"";
   $("board").innerHTML=`
     <div class="board-top">
-      <div class="board-title"><h1>${range}</h1><p>${A.getMonth()+1}月${rel?" ・ "+rel:""}</p></div>
+      <div class="board-title">${todayLine()}<h1>${range}</h1><p>${A.getMonth()+1}月${rel?" ・ "+rel:""}</p></div>
       <button class="nav-btn" data-act="week" data-v="-7" aria-label="前の週">${ICON.l}</button>
       <button class="nav-btn" data-act="week" data-v="7" aria-label="次の週">${ICON.r}</button>
     </div>
@@ -781,7 +787,7 @@ function renderDay(){
   const say=!L.length?(k<t?"この日の計画はなし":"計画を立てよう"):n===L.length?"全部できたね!":`やること${L.length-n}つ ・ やったこと${n}つ`;
   $("board").innerHTML=`
     <div class="board-top">
-      <div class="board-title"><h1>${d.getMonth()+1}月 ${d.getDate()}日</h1><p>${WDL[d.getDay()]}${k===t?"(今日)":k===shift(t,1)?"(明日)":k===shift(t,-1)?"(昨日)":""}</p></div>
+      <div class="board-title">${k===t?"":todayLine()}<h1>${d.getMonth()+1}月 ${d.getDate()}日</h1><p>${WDL[d.getDay()]}${k===t?"(今日)":k===shift(t,1)?"(明日)":k===shift(t,-1)?"(昨日)":""}</p></div>
       <button class="nav-btn" data-act="week" data-v="-7" aria-label="前の週">${ICON.l}</button>
       <button class="nav-btn" data-act="week" data-v="7" aria-label="次の週">${ICON.r}</button>
     </div>
@@ -812,8 +818,12 @@ const testName=x=>x.subj+"のテスト";
 const untilText=k=>{const n=Math.round((parse(k)-parse(today()))/864e5);return n<0?"終わり":n===0?"今日":n===1?"明日":`あと${n}日`};
 /* 今週のテストを、時間割の同じ曜日・同じ教科のマスに重ねる */
 /* 土日は次の週の時間割を見せる */
-const ttDefaultWeek=()=>{const t=today();return dayIdx(t)<5?monday(t):shift(monday(t),7)};
-function weekTestCells(g,w=monday(today())){const T={};state.tests.forEach(x=>{const i=dayIdx(x.date);if(monday(x.date)===w&&i<5)g[i].forEach((l,p)=>{if(l===x.subj)T[i+"-"+p]=true})});return T}
+const ttDefaultWeek=()=>"next";
+const isDateKey=v=>/^\d{4}-/.test(v||"");
+/* 月〜金それぞれの、今日以降でいちばん近い日 */
+const upcomingDays=()=>{const t=today(),m=monday(t);return TT_DAYS.map((_,i)=>{const k=shift(m,i);return k<t?shift(k,7):k})};
+const viewDays=w=>w==="next"?upcomingDays():TT_DAYS.map((_,i)=>shift(w,i));
+function weekTestCells(g,w=monday(today())){const T={},D=viewDays(w);state.tests.forEach(x=>{const i=D.indexOf(x.date);if(i>=0)g[i].forEach((l,p)=>{if(l===x.subj)T[i+"-"+p]=true})});return T}
 const TT_PERIODS=6;
 const blankGrid=()=>TT_DAYS.map(()=>Array(TT_PERIODS).fill(""));
 const SUBJ_ALIAS={"外国語":"eigo"};
@@ -829,11 +839,11 @@ const ttCount=g=>g.flat().filter(Boolean).length;
 const stamp=ms=>{const d=new Date(ms);return `${d.getMonth()+1}月${d.getDate()}日 ${d.getHours()}:${pad(d.getMinutes())}`};
 const cellHTML=(l,test)=>(l==="理科社会"?"理科<br>社会":esc(l))+(l&&test?"<small>テスト</small>":"");
 function ttGrid(g,edit,T={},dates=false,tap=false){
-  const mon=typeof dates==="string"?dates:monday(today()),t=today();
-  let h='<div></div>'+TT_DAYS.map((d,i)=>{const k=shift(mon,i),x=parse(k);
+  const D=typeof dates==="string"?viewDays(dates):viewDays(monday(today())),t=today();
+  let h='<div></div>'+TT_DAYS.map((d,i)=>{const k=D[i],x=parse(k);
     /* 時間割にない教科のテストは、曜日の下に出す */
     const extra=dates?testsOn(k).filter(y=>!g[i].includes(y.subj)).map(y=>`<span class="thx">${esc(y.subj)}テスト</span>`).join(""):"";
-    return `<div class="th${dates&&k===t?" now":""}${extra?" has-x":""}">${d}${dates?`<small>${x.getMonth()+1}/${x.getDate()}</small>`:""}${extra}</div>`}).join("");
+    return `<div class="th${dates&&k===t?" now":""}${extra?" has-x":""}">${d}${dates?`<small>${x.getMonth()+1}/${x.getDate()}</small>`:""}${dates&&k===t?'<span class="thtoday">今日</span>':""}${extra}</div>`}).join("");
   for(let p=0;p<TT_PERIODS;p++){
     h+=`<div class="pn">${p+1}</div>`;
     for(let d=0;d<5;d++){
@@ -851,15 +861,15 @@ function renderTT(){
   const byDate=state.tests.slice().sort((a,b)=>a.date.localeCompare(b.date));
   const upcoming=byDate.filter(x=>x.date>=now),past=byDate.filter(x=>x.date<now).reverse();
   const testRow=x=>`<button class="ttest${x.date<now?" past":""}" data-act="testOpen" data-v="${x.id}"><span class="when">${x.result?"結果あり":x.skip?"なし":untilText(x.date)}</span><span><b>${testName(x)}</b><span>${dateLabel(x.date)}${x.memo?" ・ "+esc(x.memo):""}</span></span><span></span></button>`;
-  $("board").innerHTML=`<div class="board-top"><div class="board-title"><h1>時間割</h1><p>${USERS[who]} ・ 登録${L.length}回</p></div></div>
+  $("board").innerHTML=`<div class="board-top"><div class="board-title">${todayLine()}<h1>時間割</h1><p>${USERS[who]} ・ 登録${L.length}回</p></div></div>
     <div class="say"><span>${A?stamp(A.savedAt)+"の時間割を使用中":"写真を見ながら登録しよう"}</span></div><div class="tray" aria-hidden="true"></div>`;
   $("main").innerHTML=`<button class="add" data-act="ttNew"><span aria-hidden="true">+</span>写真から時間割を登録</button>`+
     `<button class="ghost" data-act="testNew">テストを登録</button>`+
     (A||upcoming.length?'<button class="ghost" data-act="ttPlan">時間割から計画を作る</button>':"")+
     `<section class="panel" style="grid-column:1/-1"><h2>テストの予定</h2>${upcoming.length?`<div class="tlist">${upcoming.map(testRow).join("")}</div>`:"<p>日付を決めて登録すると、ここに出るよ。</p>"}</section>
-    <section class="panel tt-now"><h2>今の時間割</h2>${A?`<p>マスを押すと、すぐ直せるよ。赤いマスがテストの時間だよ。</p>
-      <div class="ttnav"><button class="nav-btn" data-act="ttWeek" data-v="-7" aria-label="前の週">${ICON.l}</button><b>${(()=>{const a=parse(ui.ttWeek),b=parse(shift(ui.ttWeek,4));return `${a.getMonth()+1}/${a.getDate()}〜${b.getMonth()+1}/${b.getDate()}`})()}<span>${ui.ttWeek===monday(today())?"今週":ui.ttWeek===shift(monday(today()),7)?"来週":ui.ttWeek===shift(monday(today()),-7)?"先週":""}</span></b><button class="nav-btn" data-act="ttWeek" data-v="7" aria-label="次の週">${ICON.r}</button></div>
-      ${ui.ttWeek!==ttDefaultWeek()?'<button class="small" data-act="ttWeekReset">今の週にもどる</button>':""}`+ttGrid(A.grid,false,weekTestCells(A.grid,ui.ttWeek),ui.ttWeek,true)+`<div class="row-btns"><button class="small" data-act="ttEdit" data-v="${A.id}">コピーして直す</button></div>`:"<p>まだ登録されていないよ。</p>"}</section>
+    <section class="panel tt-now"><h2>今の時間割</h2>${A?`<p>マスを押すと、すぐ直せるよ。赤いマスがテストの時間だよ。過ぎた曜日は、来週の日付になるよ。</p>
+      <div class="ttnav"><button class="nav-btn" data-act="ttWeek" data-v="-7" aria-label="前の週">${ICON.l}</button><b>${(()=>{const D=viewDays(ui.ttWeek).slice().sort(),a=parse(D[0]),b=parse(D[4]);return `${a.getMonth()+1}/${a.getDate()}〜${b.getMonth()+1}/${b.getDate()}`})()}<span>${ui.ttWeek==="next"?"これから":ui.ttWeek===monday(today())?"今週":ui.ttWeek===shift(monday(today()),7)?"来週":ui.ttWeek===shift(monday(today()),-7)?"先週":""}</span></b><button class="nav-btn" data-act="ttWeek" data-v="7" aria-label="次の週">${ICON.r}</button></div>
+      ${ui.ttWeek!==ttDefaultWeek()?'<button class="small" data-act="ttWeekReset">これからの予定にもどる</button>':""}`+ttGrid(A.grid,false,weekTestCells(A.grid,ui.ttWeek),ui.ttWeek,true)+`<div class="row-btns"><button class="small" data-act="ttEdit" data-v="${A.id}">コピーして直す</button></div>`:"<p>まだ登録されていないよ。</p>"}</section>
     <section class="panel"><div class="ph"><h2>これまでの時間割</h2><button class="small solid" data-act="ttNew">+ 追加</button></div>${L.length?`<div>${L.map(x=>{const on=x.id===state.ttActive,sure=ui.ttDel===x.id;return `<div class="hrow"><button class="hist" data-act="ttOpen" data-v="${x.id}">
       ${x.photoId?`<img class="thumb" data-photo="${x.photoId}" alt="">`:'<span class="thumb"></span>'}
       <span><b>${stamp(x.savedAt)}</b><span>授業${ttCount(x.grid)}こ${x.photoId?" ・ 写真あり":""}</span></span>
@@ -969,7 +979,7 @@ function renderRes(){
   const all=state.tests.filter(x=>x.result).sort((a,b)=>b.date.localeCompare(a.date)),W=waitingTests();
   const subs=[...new Set(all.map(x=>x.subj))];if(ui.resSubj&&!subs.includes(ui.resSubj))ui.resSubj=null;
   const L=ui.resSubj?all.filter(x=>x.subj===ui.resSubj):all;
-  $("board").innerHTML=`<div class="board-top"><div class="board-title"><h1>テストの結果</h1><p>${USERS[who]}</p></div></div>
+  $("board").innerHTML=`<div class="board-top"><div class="board-title">${todayLine()}<h1>テストの結果</h1><p>${USERS[who]}</p></div></div>
     <div class="say"><span>結果${all.length}件${W.length?` ・ 入力待ち${W.length}件`:""}</span></div><div class="tray" aria-hidden="true"></div>`;
   $("main").innerHTML=(W.length?`<section class="panel" style="grid-column:1/-1"><h2>結果を入れてね</h2><div class="tlist">${W.map(x=>`<button class="ttest" data-act="resOpen" data-v="${x.id}"><span class="when">入力</span><span><b>${esc(testName(x))}</b><span>${dateLabel(x.date)}${x.memo?" ・ "+esc(x.memo):""}</span></span><span></span></button>`).join("")}</div></section>`:"")+
     (all.length?`<section class="panel" style="grid-column:1/-1"><div class="ph"><h2>集計</h2><button class="small solid" data-act="csvOpen">CSVで出力</button></div>
@@ -1082,7 +1092,7 @@ function sheetExtra(){
 }
 const tmodeLabel=()=>s.testMode?"テストとして入れる:オン":"テストとして入れる:オフ";
 /* その曜日の、今日以降の日付(n=0が次回) */
-function occ(d,n=0){const t=today();let k=shift(ui.ttWeek&&ui.ttWeek>monday(t)?ui.ttWeek:monday(t),d);if(k<t)k=shift(k,7);return shift(k,n*7)}
+function occ(d,n=0){const t=today();let k=shift(isDateKey(ui.ttWeek)&&ui.ttWeek>monday(t)?ui.ttWeek:monday(t),d);if(k<t)k=shift(k,7);return shift(k,n*7)}
 const shortDate=k=>{const d=parse(k);return `${d.getMonth()+1}/${d.getDate()}(${WD[d.getDay()]})`};
 const findTest=(date,subj)=>state.tests.find(x=>x.date===date&&x.subj===subj);
 const dropTest=x=>{if(x&&!x.result)state.tests=state.tests.filter(y=>y!==x)};
@@ -1123,7 +1133,7 @@ function renderRec(){
   const max=by.length?by[0].v:1;
   $("board").innerHTML=`
     <div class="board-top">
-      <div class="board-title"><h1>${m}月の記録</h1><p>${y}年</p></div>
+      <div class="board-title">${todayLine()}<h1>${m}月の記録</h1><p>${y}年</p></div>
       <button class="nav-btn" data-act="month" data-v="-1" aria-label="前の月">${ICON.l}</button>
       <button class="nav-btn" data-act="month" data-v="1" aria-label="次の月">${ICON.r}</button>
     </div>
@@ -1217,7 +1227,7 @@ const ACT={
   ttOpen:v=>openSheet({mode:"ttView",id:v,del:false}),
   ttCell:v=>{s.sel=v;ttPaint()},
   ttPick:v=>{let[d,p]=s.sel.split("-").map(Number);s.grid[d][p]=v||"";if(v&&s.testMode)s.tests[s.sel]=true;else delete s.tests[s.sel];p++;if(p>=TT_PERIODS){p=0;d=(d+1)%5}s.sel=d+"-"+p;ttPaint()},
-  ttWeek:v=>{ui.ttWeek=shift(ui.ttWeek,+v);render()},
+  ttWeek:v=>{const m=monday(today());ui.ttWeek=ui.ttWeek==="next"?(+v>0?shift(m,7):m):shift(ui.ttWeek,+v);render()},
   ttWeekReset:()=>{ui.ttWeek=ttDefaultWeek();render()},
   ttMode:()=>{s.testMode=!s.testMode;ttPaint()},
   ttQuick:v=>{const[d,p]=v.split("-").map(Number);openSheet(cellState(d,p,activeTT().grid))},
@@ -1361,10 +1371,17 @@ $("sheet").addEventListener("close",()=>{if(closingByCode){closingByCode=false;r
 ruby(document.querySelector(".tabs"));
 render();
 checkResults();
-/* 記録を消されにくくする */
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 if("serviceWorker" in navigator&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkResults()});
+let shownDay=today();
+function dayChanged(){
+  const t=today();if(t===shownDay)return;
+  if(ui.date===shownDay)ui.date=t;ui.week=monday(ui.date);ui.ttWeek=null;ui.noAsk=false;shownDay=t;
+  if(!$("sheet").open)render();checkResults();
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){dayChanged();checkResults()}});
+window.addEventListener("focus",dayChanged);
+setInterval(dayChanged,60000);
 </script>
 </body>
 </html>
