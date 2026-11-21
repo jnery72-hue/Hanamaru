@@ -541,6 +541,11 @@ dialog{border-radius:var(--r-l) var(--r-l) 0 0}
 .tg .tc.holday.test{background:#E7B9B6;color:#fff}
 @media (min-width:700px){.hname,.thhol{font-size:14px}}
 
+.sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.sugg[hidden]{display:none}
+.sg{min-height:40px;padding:4px 12px;border:1px solid var(--line);border-radius:var(--r-p);background:var(--soft);color:var(--ink);font-size:16px;font-weight:700;max-width:100%;overflow-wrap:anywhere;text-align:left}
+.sg::before{content:"↺ ";color:var(--ink-soft);font-weight:500}
+
 /* タブレット: 画面の幅に合わせて自動で広げる */
 @media (min-width:700px){
   body{font-size:19px}
@@ -777,6 +782,27 @@ function holidaysOf(y){
 const holiday=k=>holidaysOf(+k.slice(0,4))[k]||"";
 /* 色分け用: 土曜は sat、日曜と祝日は sun */
 const dayKind=k=>holiday(k)||parse(k).getDay()===0?"sun":parse(k).getDay()===6?"sat":"";
+/* 前に書いたことから候補を出す(その人の記録だけ) */
+const SUGG=["custom","addNote","taskNote","testMemo"];
+const kana=v=>v.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-96)).toLowerCase();
+function pastValues(id){
+  let L=[];
+  if(id==="custom")L=state.tasks.filter(x=>!presets().includes(x.title)&&!/の(復習|準備|テスト勉強)$/.test(x.title)).map(x=>[x.title,x.date,x.subj]);
+  else if(id==="testMemo")L=state.tests.filter(x=>x.memo).map(x=>[x.memo,x.date,x.subj]);
+  else L=state.tasks.filter(x=>x.note).map(x=>[x.note,x.date,x.subj]);
+  const m=new Map();
+  L.forEach(([v,d,sj])=>{const o=m.get(v)||{v,d:"",n:0,sj:{}};o.n++;if(d>o.d)o.d=d;o.sj[sj]=1;m.set(v,o)});
+  return [...m.values()];
+}
+function fillSugg(id){
+  const box=document.querySelector(`.sugg[data-for="${id}"]`),inp=$(id);if(!box||!inp)return;
+  const cur=inp.value.trim(),q=kana(cur),sj=s&&(s.mode==="rec"?(state.tasks.find(x=>x.id===s.id)||{}).subj:s.subj);
+  const L=pastValues(id).filter(o=>o.v!==cur&&(!q||kana(o.v).includes(q)));
+  const st=o=>q&&kana(o.v).startsWith(q)?1:0,same=o=>o.sj[sj]?1:0;
+  L.sort((a,b)=>st(b)-st(a)||same(b)-same(a)||b.d.localeCompare(a.d)||b.n-a.n);
+  box.innerHTML=L.slice(0,6).map(o=>`<button type="button" class="sg" data-v="${esc(o.v)}">${esc(o.v)}</button>`).join("");
+  box.hidden=!L.length;
+}
 const todayLine=()=>{const d=new Date();return `<span class="today-chip">今日は ${d.getMonth()+1}月${d.getDate()}日(${WD[d.getDay()]})</span>`};
 function render(){
   document.documentElement.dataset.who=who;
@@ -1118,7 +1144,7 @@ function sheetExtra(){
       `<fieldset><legend class="q">いつ?</legend><label class="sr" for="testDate">テストの日付</label><input class="text" id="testDate" type="date" value="${s.date}"></fieldset>
       <fieldset><legend class="q">どの教科?</legend><div class="opts">${allSubj().map(l=>opt("testSubj",l,l,s.subj===l,ttC(l))).join("")}</div>${addSubjHTML()}</fieldset>
       <fieldset><legend class="q">テストの種類</legend><div class="opts grid3" style="grid-template-columns:1fr 1fr">${Object.entries(KINDS).map(([k,v])=>opt("testKind",k,v,s.kind===k)).join("")}</div></fieldset>
-      <fieldset><legend class="q">メモ</legend><label class="sr" for="testMemo">メモ</label><input class="text" id="testMemo" maxlength="30" placeholder="出るところなど(なくても大丈夫)" value="${esc(s.memo)}" autocomplete="off"></fieldset>
+      <fieldset><legend class="q">メモ</legend><label class="sr" for="testMemo">メモ</label><input class="text" id="testMemo" maxlength="30" placeholder="出るところなど(なくても大丈夫)" value="${esc(s.memo)}" autocomplete="off"><div class="sugg" data-for="testMemo" hidden></div></fieldset>
       <button class="go" id="testGo" data-act="testSave" ${s.date&&s.subj?"":"disabled"}>${s.id?"直して保存する":"テストを登録する"}</button>
       ${s.id?`<div class="sub">${s.date<=today()?'<button class="link" data-act="testRes">結果を入れる</button>':""}<button class="link${s.del?" warn":""}" data-act="testDel">${s.del?"本当に消す":"このテストを消す"}</button></div>`:""}`;
   }
@@ -1227,13 +1253,13 @@ function renderSheet(){
       <div class="opts"><button class="opt mini" type="button" data-act="daySet" data-v="all">毎日</button><button class="opt mini" type="button" data-act="daySet" data-v="school">月〜金</button></div></fieldset>`)+
     `<fieldset><legend class="q">どの勉強?</legend><div class="opts grid3">${Object.entries(SUBJECTS).filter(([k])=>k!=="rikasha"||s.subj===k).map(([k,v])=>opt("subj",k,v.n,s.subj===k,v.c)).join("")}</div></fieldset>`+
     (S?`<fieldset><legend class="q">何をする?</legend><div class="opts">${presets().map(p=>opt("preset",p,p,s.preset===p,S.c)).join("")}</div>
-      <label class="sr" for="custom">自分で書く</label><input class="text" id="custom" maxlength="24" placeholder="自分で書く" value="${esc(s.custom||"")}" autocomplete="off"></fieldset>
-      <fieldset><legend class="q"><label for="addNote">内容</label></legend><input class="text" id="addNote" maxlength="60" placeholder="例:教科書12〜15ページ" value="${esc(s.note||"")}" autocomplete="off"></fieldset>`:"")+
+      <label class="sr" for="custom">自分で書く</label><input class="text" id="custom" maxlength="24" placeholder="自分で書く" value="${esc(s.custom||"")}" autocomplete="off"><div class="sugg" data-for="custom" hidden></div></fieldset>
+      <fieldset><legend class="q"><label for="addNote">内容</label></legend><input class="text" id="addNote" maxlength="60" placeholder="例:教科書12〜15ページ" value="${esc(s.note||"")}" autocomplete="off"><div class="sugg" data-for="addNote" hidden></div></fieldset>`:"")+
     `<fieldset><legend class="q">何分?</legend>${wheelHTML("plan","計画の時間",s.plan,5,180)}</fieldset>
     <button class="go" id="go" data-act="saveNew" ${canSave()?"":"disabled"}>${goLabel()}</button>`;
   }else{
     const x=state.tasks.find(t=>t.id===s.id),S=SUBJECTS[x.subj],fut=x.date>today();
-    h=head(x.title)+`<fieldset><legend class="q"><label for="taskNote">内容</label></legend><input class="text" id="taskNote" maxlength="60" placeholder="例:教科書12〜15ページ" value="${esc(x.note||"")}" autocomplete="off"></fieldset>`;
+    h=head(x.title)+`<fieldset><legend class="q"><label for="taskNote">内容</label></legend><input class="text" id="taskNote" maxlength="60" placeholder="例:教科書12〜15ページ" value="${esc(x.note||"")}" autocomplete="off"><div class="sugg" data-for="taskNote" hidden></div></fieldset>`;
     if(fut)h+=`<p class="lead">この日になったら記録できるよ。</p>`;
     else if(x.done)h+=`<p class="lead">${S.n}を${fun(x.min)}やったよ。${x.feel?"どうだった:"+feelText(x.feel):""}</p>`;
     else h+=`<fieldset><legend class="q">何分やった?</legend>${wheelHTML("min","やった時間",s.min,5,180)}</fieldset>
@@ -1244,7 +1270,7 @@ function renderSheet(){
       <button class="link${s.del?" warn":""}" data-act="del">${s.del?"本当に消す":"この計画を消す"}</button></div>`;
   }
   $("sheetBody").innerHTML=h;
-  ruby($("sheetBody"));hydrate($("sheetBody"));wheelInit($("sheetBody"));
+  ruby($("sheetBody"));hydrate($("sheetBody"));SUGG.forEach(fillSugg);wheelInit($("sheetBody"));
   if(fa){const el=[...$("sheetBody").querySelectorAll("[data-act]")].find(e=>e.dataset.act===fa&&e.dataset.v===fv);if(el)el.focus()}
 }
 function celebrate(allDone){
@@ -1392,6 +1418,12 @@ document.addEventListener("click",e=>{
   const b=e.target.closest("[data-act]");
   if(b&&!b.disabled)ACT[b.dataset.act](b.dataset.v);
 });
+document.addEventListener("click",e=>{
+  const b=e.target.closest&&e.target.closest(".sg");if(!b)return;
+  const inp=$(b.parentElement.dataset.for);if(!inp)return;
+  inp.value=b.dataset.v;inp.dispatchEvent(new Event("input",{bubbles:true}));inp.focus();
+});
+document.addEventListener("input",e=>{if(SUGG.includes(e.target.id))setTimeout(()=>fillSugg(e.target.id),0)});
 document.addEventListener("change",async e=>{
   const f=e.target.files&&e.target.files[0];if(!f||!s)return;
   if(e.target.id==="ttFile"){
